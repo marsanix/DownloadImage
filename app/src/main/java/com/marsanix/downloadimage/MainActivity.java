@@ -4,10 +4,12 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.database.Cursor;
+import android.graphics.BitmapFactory;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
@@ -27,7 +29,7 @@ public class MainActivity extends AppCompatActivity {
     Button btnDownload;
 
     DownloadManager downloadManager = null;
-    long lastDownload;
+    long lastDownload = 0L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
         inputUrl = findViewById(R.id.inputUrl);
         btnDownload = findViewById(R.id.btnDownload);
 
+        downloadManager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
         registerReceiver(onDownloadCompleted, new IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE));
 
         btnDownload.setOnClickListener(v -> {
@@ -51,18 +54,15 @@ public class MainActivity extends AppCompatActivity {
 
         try {
 
-
-            downloadManager = (DownloadManager) getSystemService(Context.DOWNLOAD_SERVICE);
-
             Uri downloadUri = Uri.parse(imageURL);
             DownloadManager.Request request = new DownloadManager.Request(downloadUri);
 
             request.setAllowedNetworkTypes(DownloadManager.Request.NETWORK_WIFI | DownloadManager.Request.NETWORK_MOBILE)
                     .setAllowedOverRoaming(false)
-                    .setTitle(fileName)
+                    // .setTitle(fileName)
                     .setMimeType("image/jpeg")
-                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, File.separator + fileName + ".jpg");
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+                    // .setDestinationInExternalPublicDir(Environment.DIRECTORY_PICTURES, File.separator + fileName + ".jpg");
 
             lastDownload = downloadManager.enqueue(request);
 
@@ -79,9 +79,36 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
 
-//            Cursor c = downloadManager.query(new DownloadManager.Query().setFilterById(lastDownload));
-//            String strColId = c.getString(c.getColumnIndex(DownloadManager.COLUMN_ID));
-//            Toast.makeText(context, strColId, Toast.LENGTH_LONG).show();
+            long id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, 0L);
+            if (id != lastDownload) {
+                Log.e("_DOWNLOAD", "Ingnoring unrelated download " + id);
+                return;
+            }
+
+            DownloadManager downloadManager = (DownloadManager) context.getSystemService(Context.DOWNLOAD_SERVICE);
+            DownloadManager.Query query = new DownloadManager.Query();
+            query.setFilterById(id);
+            Cursor c = downloadManager.query(query);
+
+            if (!c.moveToFirst()) {
+                Log.e("_DOWNLOAD", "Empty row");
+                return;
+            }
+
+            int statusIndex = c.getColumnIndex(DownloadManager.COLUMN_STATUS);
+            if (DownloadManager.STATUS_SUCCESSFUL != c.getInt(statusIndex)) {
+                Log.w("_DOWNLOAD", "Download Failed");
+                return;
+            }
+
+            int columnLocalFilename = c.getColumnIndex(DownloadManager.COLUMN_LOCAL_URI);
+            String downloadedFilename = c.getString(columnLocalFilename);
+
+            Toast.makeText(context, downloadedFilename, Toast.LENGTH_LONG).show();
+
+            // File file = new File(downloadedFilename);
+            // imageView.setImageResource(file);
+
         }
     };
 
